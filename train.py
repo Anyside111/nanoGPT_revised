@@ -54,6 +54,7 @@ n_head = 12
 n_embd = 768
 dropout = 0.0 # for pretraining 0 is good, for finetuning try 0.1+
 key_query_dim = 64
+window_size = 100
 bias = False # do we use bias inside LayerNorm and Linear layers?
 # adamw optimizer
 learning_rate = 6e-4 # max learning rate
@@ -146,7 +147,8 @@ if os.path.exists(meta_path):
 
 # model init
 model_args = dict(n_layer=n_layer, n_head=n_head, n_embd=n_embd, block_size=block_size,
-                  bias=bias, vocab_size=None, dropout=dropout, key_query_dim=key_query_dim) # start with model_args from command line
+                  bias=bias, vocab_size=None, dropout=dropout, key_query_dim=key_query_dim, window_size= window_size) # start with model_args from command line
+
 if init_from == 'scratch':
     # init a new model from scratch
     print("Initializing a new model from scratch")
@@ -250,9 +252,12 @@ if wandb_log and master_process:
 # training loop
 import csv
 losses_file_path = os.path.join(out_dir, 'losses.csv')
-with open(losses_file_path, 'w', newline='') as file:
-    writer = csv.writer(file)
-    writer.writerow(['Iteration', 'Train Loss', 'Validation Loss'])
+def record_losses(iteration, train_loss, val_loss=None):
+    if val_loss is None:
+        val_loss = 'N/A'  # Use 'N/A' when validation loss is not calculated
+    with open(losses_file_path, 'a', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow([iteration, train_loss, val_loss])
 
 
 X, Y = get_batch('train') # fetch the very first batch
@@ -270,14 +275,14 @@ while True:
     if iter_num % eval_interval == 0 and master_process:
         losses = estimate_loss()
         print(f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
-        with open(losses_file_path, 'a', newline='') as file:
-            writer = csv.writer(file)
-            writer.writerow([iter_num, losses['train'], losses['val']])
+        record_losses(iter_num, losses['train'], losses['val'])
         if wandb_log:
             wandb.log({
                 "iter": iter_num,
                 "train/loss": losses['train'],
                 "val/loss": losses['val'],
+                "window_size": model_args['window_size'],
+                "key_query_dim": model_args['key_query_dim'],
                 "lr": lr,
                 "mfu": running_mfu*100, # convert to percentage
             })
@@ -340,9 +345,7 @@ while True:
         # Ensure final iteration's losses are recorded and logged
         losses = estimate_loss()
         print(f"final step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
-        with open(losses_file_path, 'a', newline='') as file:
-            writer = csv.writer(file)
-            writer.writerow([iter_num, losses['train'], losses['val']])
+        record_losses(iter_num, losses['train'], losses['val'])
         break
 
     iter_num += 1

@@ -23,7 +23,8 @@ n_layer = 6
 n_head = 6
 n_embd = 384
 dropout = 0.2
-key_query_dim = 8
+key_query_dim = 8 # 64,32, 8
+window_size=10 # 100, 10, 3, None
 
 learning_rate = 1e-3 # with baby networks can afford to go a bit higher
 max_iters = 5000
