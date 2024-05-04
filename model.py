@@ -28,10 +28,10 @@ class LayerNorm(nn.Module):
 
 class CausalSelfAttention(nn.Module):
 
-    def __init__(self, config, window_size=None):
+    def __init__(self, config):
         super().__init__()
         print("Initialized with window size:", config.window_size)
-        self.window_size = window_size
+        self.window_size = config.window_size
         assert config.n_embd % config.n_head == 0
         # Calculate dimensions for keys, queries, and values
         self.key_query_dim = config.key_query_dim
@@ -85,7 +85,9 @@ class CausalSelfAttention(nn.Module):
         # causal self-attention; Self-attend: (B, nh, T, hs) x (B, nh, hs, T) -> (B, nh, T, T)
         if self.flash:
             # efficient attention using Flash Attention CUDA kernels
-            y = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=None, dropout_p=self.dropout if self.training else 0, is_causal=True)
+            y = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=self.bias[:, :, :T, :T],
+                                                                 dropout_p=self.dropout if self.training else 0,
+                                                                 is_causal=True) # attn_mask is windowed
         else:
             # Apply sliding window attention using the causal mask
             att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(self.key_query_dim))
@@ -103,24 +105,26 @@ class MLP(nn.Module):
 
     def __init__(self, config):
         super().__init__()
-        self.c_fc    = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias)
-        self.gelu    = nn.GELU()
-        self.c_proj  = nn.Linear(4 * config.n_embd, config.n_embd, bias=config.bias)
+        self.fc1 = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias)
+        self.fc2 = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias) # fc1 and fc2 both take inputs from the previous layer and produce outputs of the same dimension.
+        self.fc3 = nn.Linear(4 * config.n_embd, config.n_embd, bias=config.bias) # fc3 takes the result of the element-wise multiplication and maps it back to the original embedding dimension.
+        self.relu = nn.ReLU()
         self.dropout = nn.Dropout(config.dropout)
-
     def forward(self, x):
-        x = self.c_fc(x)
-        x = self.gelu(x)
-        x = self.c_proj(x)
-        x = self.dropout(x)
-        return x
+        x1 = self.fc1(x)
+        x1 = self.relu(x1)
+        x2 = self.fc2(x)
+        x3 = x1 * x2  # Element-wise multiplication
+        x3 = self.fc3(x3)
+        x3 = self.dropout(x3)
+        return x3
 
 class Block(nn.Module):
 
     def __init__(self, config):
         super().__init__()
         self.ln_1 = LayerNorm(config.n_embd, bias=config.bias)
-        self.attn = CausalSelfAttention(config, window_size=config.window_size)
+        self.attn = CausalSelfAttention(config)
         self.ln_2 = LayerNorm(config.n_embd, bias=config.bias)
         self.mlp = MLP(config)
 
