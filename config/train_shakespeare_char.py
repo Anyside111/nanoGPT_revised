@@ -25,7 +25,8 @@ n_embd = 384
 dropout = 0.2
 key_query_dim = 8 # 64(default), 32, 8
 window_size = 10 # 100, 10, 3, None for full attention
-n_regist = 1 # 0, 1, 5
+n_regist = 5 # 0, 1, 5
+softmax_abs: bool = False
 
 learning_rate = 1e-3 # with baby networks can afford to go a bit higher
 max_iters = 5000

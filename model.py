@@ -26,6 +26,12 @@ class LayerNorm(nn.Module):
     def forward(self, input):
         return F.layer_norm(input, self.weight.shape, self.weight, self.bias, 1e-5)
 
+
+def softmax_abs(input, dim=-1):
+    abs_input = torch.abs(input)
+    summation = torch.sum(abs_input, dim=dim, keepdim=True)
+    return abs_input / summation
+
 class CausalSelfAttention(nn.Module):
 
     def __init__(self, config):
@@ -36,6 +42,7 @@ class CausalSelfAttention(nn.Module):
         # Calculate dimensions for keys, queries, and values
         self.key_query_dim = config.key_query_dim
         self.value_dim = config.n_embd // config.n_head # value dim is same as n_embd // n_head
+        self.softmax_abs = config.softmax_abs
 
         # key, query, value projections for all heads
         total_kv_dim = 2 * self.key_query_dim * config.n_head + self.value_dim * config.n_head
@@ -58,14 +65,32 @@ class CausalSelfAttention(nn.Module):
             # self.register_buffer("bias", torch.tril(torch.ones(config.block_size, config.block_size))
             #                             .view(1, 1, config.block_size, config.block_size))
         # Causal mask setup
-        if self.window_size is not None:
-            max_window_size = min(self.window_size, config.block_size)
-            mask = (torch.tril(torch.ones(config.block_size+config.n_regist, config.block_size+config.n_regist))-
-                    torch.tril(torch.ones(config.block_size+config.n_regist, config.block_size+config.n_regist), diagonal=-max_window_size))
-        else:
-            mask = torch.tril(torch.ones(config.block_size+config.n_regist, config.block_size+config.n_regist))
+        full_size = config.block_size + config.n_regist
+        full_mask = torch.zeros(full_size, full_size)
+        # Handling only register tokens without a sliding window
+        if self.window_size is None:
+            full_mask = torch.ones(full_size, full_size)  # Full attention within register or non-register tokens
 
-        self.register_buffer("bias", mask.view(1, 1, config.block_size+config.n_regist, config.block_size+config.n_regist))
+        # Handling only sliding window without register tokens
+        elif self.window_size is not None and config.n_regist == 0:
+            max_window_size = min(self.window_size, config.block_size)
+            sliding_mask = (torch.tril(torch.ones(config.block_size, config.block_size)) -
+                            torch.tril(torch.ones(config.block_size, config.block_size), diagonal=-max_window_size))
+            full_mask[:config.block_size, :config.block_size] = sliding_mask # size of full_mask is block_size * block_size
+
+        # Combining register tokens with sliding window
+        elif self.window_size is not None and config.n_regist > 0:
+            max_window_size = min(self.window_size, config.block_size)
+            sliding_mask = (torch.tril(torch.ones(config.block_size, config.block_size)) -
+                            torch.tril(torch.ones(config.block_size, config.block_size), diagonal=-max_window_size))
+            # Register tokens can be seen by all tokens
+            full_mask[:, :config.n_regist] = 1
+            # full_mask[:config.n_regist, :] = 1
+            # Sliding window for the rest
+            full_mask[config.n_regist:, config.n_regist:] = sliding_mask
+
+        # Register the attention mask
+        self.register_buffer("bias", full_mask.view(1, 1, full_size, full_size))
 
     def forward(self, x):
         B, T, C = x.size() # batch size, sequence length, embedding dimensionality (n_embd)
@@ -92,7 +117,12 @@ class CausalSelfAttention(nn.Module):
             # Apply sliding window attention using the causal mask
             att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(self.key_query_dim))
             att = att.masked_fill(self.bias[:,:,:T,:T] == 0, float('-inf'))
-            att = F.softmax(att, dim=-1)
+
+            if self.softmax_abs:
+                # use absolute position embeddings in softmax
+                att = softmax_abs(att, dim=-1)
+            else:
+                att = F.softmax(att, dim=-1)
             att = self.attn_dropout(att)
             y = att @ v # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
         y = y.transpose(1, 2).contiguous().view(B, T, C) # re-assemble all head outputs side by side
@@ -154,6 +184,7 @@ class GPTConfig:
     key_query_dim: int = 64  # dimension of key and query vectors, defaults to 64 as in the paper
     window_size: int = None # optional window size for sliding window attention
     n_regist: int = 0 # number of register tokens
+    softmax_abs: bool = False # use absolute position embeddings in softmax, like Longformer
 
 class GPT(nn.Module):
 

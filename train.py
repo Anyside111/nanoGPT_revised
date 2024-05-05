@@ -57,6 +57,7 @@ key_query_dim = 64
 window_size = None # None for full attention
 bias = False # do we use bias inside LayerNorm and Linear layers?
 n_regist = 5 # 0, 1, 5
+softmax_abs: bool = False
 
 # adamw optimizer
 learning_rate = 6e-4 # max learning rate
@@ -78,7 +79,10 @@ dtype = 'bfloat16' if torch.cuda.is_available() and torch.cuda.is_bf16_supported
 compile = True # use PyTorch 2.0 to compile the model to be faster
 # -----------------------------------------------------------------------------
 config_keys = [k for k,v in globals().items() if not k.startswith('_') and isinstance(v, (int, float, bool, str))]
-exec(open('configurator.py').read()) # overrides from command line or config file
+
+
+exec(open('config/hw1/train_shakespeare_char_3.2.py').read())
+# exec(open('configurator.py').read()) # overrides from command line or config file
 config = {k: globals()[k] for k in config_keys} # will be useful for logging
 # -----------------------------------------------------------------------------
 
@@ -254,12 +258,12 @@ if wandb_log and master_process:
 # training loop
 import csv
 losses_file_path = os.path.join(out_dir, 'losses.csv')
+record_file = open(losses_file_path, 'a', newline='')
+csv_writer = csv.writer(record_file)
 def record_losses(iteration, train_loss, val_loss=None):
-    if val_loss is None:
-        val_loss = 'N/A'  # Use 'N/A' when validation loss is not calculated
-    with open(losses_file_path, 'a', newline='') as file:
-        writer = csv.writer(file)
-        writer.writerow([iteration, train_loss, val_loss])
+    train_loss = train_loss.item()
+    val_loss = val_loss.item() if val_loss is not None else "empty"  #' empty' when validation loss is not calculated
+    csv_writer.writerow([iteration, train_loss, val_loss])
 
 
 X, Y = get_batch('train') # fetch the very first batch
@@ -342,6 +346,7 @@ while True:
             mfu = raw_model.estimate_mfu(batch_size * gradient_accumulation_steps, dt)
             running_mfu = mfu if running_mfu == -1.0 else 0.9*running_mfu + 0.1*mfu
         print(f"iter {iter_num}: loss {lossf:.4f}, time {dt*1000:.2f}ms, mfu {running_mfu*100:.2f}%")
+        record_losses(iter_num, loss)
 
     if iter_num >= max_iters:
         # Ensure final iteration's losses are recorded and logged
@@ -359,3 +364,5 @@ while True:
 
 if ddp:
     destroy_process_group()
+
+record_file.close()
