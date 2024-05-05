@@ -60,12 +60,12 @@ class CausalSelfAttention(nn.Module):
         # Causal mask setup
         if self.window_size is not None:
             max_window_size = min(self.window_size, config.block_size)
-            mask = (torch.tril(torch.ones(config.block_size, config.block_size))-
-                    torch.tril(torch.ones(config.block_size, config.block_size), diagonal=-max_window_size))
+            mask = (torch.tril(torch.ones(config.block_size+config.n_regist, config.block_size+config.n_regist))-
+                    torch.tril(torch.ones(config.block_size+config.n_regist, config.block_size+config.n_regist), diagonal=-max_window_size))
         else:
-            mask = torch.tril(torch.ones(config.block_size, config.block_size))
+            mask = torch.tril(torch.ones(config.block_size+config.n_regist, config.block_size+config.n_regist))
 
-        self.register_buffer("bias", mask.view(1, 1, config.block_size, config.block_size))
+        self.register_buffer("bias", mask.view(1, 1, config.block_size+config.n_regist, config.block_size+config.n_regist))
 
     def forward(self, x):
         B, T, C = x.size() # batch size, sequence length, embedding dimensionality (n_embd)
@@ -105,19 +105,28 @@ class MLP(nn.Module):
 
     def __init__(self, config):
         super().__init__()
-        self.fc1 = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias)
-        self.fc2 = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias) # fc1 and fc2 both take inputs from the previous layer and produce outputs of the same dimension.
-        self.fc3 = nn.Linear(4 * config.n_embd, config.n_embd, bias=config.bias) # fc3 takes the result of the element-wise multiplication and maps it back to the original embedding dimension.
-        self.relu = nn.ReLU()
+        self.c_fc = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias)
+        self.gelu = nn.GELU()
+        self.c_proj = nn.Linear(4 * config.n_embd, config.n_embd, bias=config.bias)
         self.dropout = nn.Dropout(config.dropout)
+        # self.fc1 = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias)
+        # self.fc2 = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias) # fc1 and fc2 both take inputs from the previous layer and produce outputs of the same dimension.
+        # self.fc3 = nn.Linear(4 * config.n_embd, config.n_embd, bias=config.bias) # fc3 takes the result of the element-wise multiplication and maps it back to the original embedding dimension.
+        # self.relu = nn.ReLU()
+        # self.dropout = nn.Dropout(config.dropout)
     def forward(self, x):
-        x1 = self.fc1(x)
-        x1 = self.relu(x1)
-        x2 = self.fc2(x)
-        x3 = x1 * x2  # Element-wise multiplication
-        x3 = self.fc3(x3)
-        x3 = self.dropout(x3)
-        return x3
+        x = self.c_fc(x)
+        x = self.gelu(x)
+        x = self.c_proj(x)
+        x = self.dropout(x)
+        return x
+        # x1 = self.fc1(x)
+        # x1 = self.relu(x1)
+        # x2 = self.fc2(x)
+        # x3 = x1 * x2  # Element-wise multiplication
+        # x3 = self.fc3(x3)
+        # x3 = self.dropout(x3)
+        # return x3
 
 class Block(nn.Module):
 
@@ -144,18 +153,20 @@ class GPTConfig:
     bias: bool = True # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
     key_query_dim: int = 64  # dimension of key and query vectors, defaults to 64 as in the paper
     window_size: int = None # optional window size for sliding window attention
+    n_regist: int = 0 # number of register tokens
 
 class GPT(nn.Module):
 
     def __init__(self, config):
         super().__init__()
+        print("Initialized with n_regist:", config.n_regist)
         assert config.vocab_size is not None
         assert config.block_size is not None
         self.config = config
 
         self.transformer = nn.ModuleDict(dict(
             wte = nn.Embedding(config.vocab_size, config.n_embd),
-            wpe = nn.Embedding(config.block_size, config.n_embd),
+            wpe = nn.Embedding(config.block_size + config.n_regist, config.n_embd),
             drop = nn.Dropout(config.dropout),
             h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]),
             ln_f = LayerNorm(config.n_embd, bias=config.bias),
@@ -167,6 +178,7 @@ class GPT(nn.Module):
         # not 100% sure what this is, so far seems to be harmless. TODO investigate
         self.transformer.wte.weight = self.lm_head.weight # https://paperswithcode.com/method/weight-tying
 
+        self.register_tokens = nn.Parameter(torch.randn(config.n_regist, config.n_embd))
         # init all weights
         self.apply(self._init_weights)
         # apply special scaled init to the residual projections, per GPT-2 paper
@@ -200,24 +212,29 @@ class GPT(nn.Module):
     def forward(self, idx, targets=None):
         device = idx.device
         b, t = idx.size()
-        assert t <= self.config.block_size, f"Cannot forward sequence of length {t}, block size is only {self.config.block_size}"
-        pos = torch.arange(0, t, dtype=torch.long, device=device) # shape (t)
+        assert t <= self.config.block_size + self.config.n_regist, f"Cannot forward sequence of length {t}, block size is only {self.config.block_size}"
+        pos = torch.arange(0, t + self.config.n_regist, dtype=torch.long, device=device) # shape (t)
 
         # forward the GPT model itself
         tok_emb = self.transformer.wte(idx) # token embeddings of shape (b, t, n_embd)
-        pos_emb = self.transformer.wpe(pos) # position embeddings of shape (t, n_embd)
-        x = self.transformer.drop(tok_emb + pos_emb)
+        reg_tok_emb = self.register_tokens.unsqueeze(0).expand(b, -1, -1)  # Shape: (b, n_regist, n_embd)
+        # Concatenate register tokens to the beginning of each sequence
+        full_tok_emb = torch.cat([reg_tok_emb, tok_emb], dim=1)  # Shape: (b, t + n_regist, n_embd)
+
+        pos_emb = self.transformer.wpe(pos[:t + self.config.n_regist])
+
+        x = self.transformer.drop(full_tok_emb + pos_emb)
         for block in self.transformer.h:
             x = block(x)
         x = self.transformer.ln_f(x)
 
+        logits = self.lm_head(x[:, self.config.n_regist:, :])  # Exclude register tokens from output logits
         if targets is not None:
             # if we are given some desired targets also calculate the loss
-            logits = self.lm_head(x)
             loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
         else:
             # inference-time mini-optimization: only forward the lm_head on the very last position
-            logits = self.lm_head(x[:, [-1], :]) # note: using list [-1] to preserve the time dim
+            logits = logits[:, [-1], :] # note: using list [-1] to preserve the time dim
             loss = None
 
         return logits, loss

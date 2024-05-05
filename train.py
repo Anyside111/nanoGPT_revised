@@ -56,6 +56,8 @@ dropout = 0.0 # for pretraining 0 is good, for finetuning try 0.1+
 key_query_dim = 64
 window_size = None # None for full attention
 bias = False # do we use bias inside LayerNorm and Linear layers?
+n_regist = 5 # 0, 1, 5
+
 # adamw optimizer
 learning_rate = 6e-4 # max learning rate
 max_iters = 600000 # total number of training iterations
@@ -147,7 +149,7 @@ if os.path.exists(meta_path):
 
 # model init
 model_args = dict(n_layer=n_layer, n_head=n_head, n_embd=n_embd, block_size=block_size,
-                  bias=bias, vocab_size=None, dropout=dropout, key_query_dim=key_query_dim, window_size= window_size) # start with model_args from command line
+                  bias=bias, vocab_size=None, dropout=dropout, key_query_dim=key_query_dim, window_size= window_size, n_regist= n_regist) # start with model_args from command line
 
 if init_from == 'scratch':
     # init a new model from scratch
