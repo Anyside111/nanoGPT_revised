@@ -69,7 +69,7 @@ class CausalSelfAttention(nn.Module):
         full_mask = torch.zeros(full_size, full_size)
         # Handling only register tokens without a sliding window
         if self.window_size is None:
-            full_mask = torch.ones(full_size, full_size)  # Full attention within register or non-register tokens
+            full_mask = torch.tril(torch.ones(full_size, full_size)) # Full attention within register or non-register tokens
 
         # Handling only sliding window without register tokens
         elif self.window_size is not None and config.n_regist == 0:
