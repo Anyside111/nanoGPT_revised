@@ -85,7 +85,7 @@ class CausalSelfAttention(nn.Module):
                             torch.tril(torch.ones(config.block_size, config.block_size), diagonal=-max_window_size))
             # Register tokens can be seen by all tokens
             full_mask[:, :config.n_regist] = 1
-            # full_mask[:config.n_regist, :] = 1
+            # full_mask[:config.n_regist, :] = 1 # Register tokens can see all tokens
             # Sliding window for the rest
             full_mask[config.n_regist:, config.n_regist:] = sliding_mask
 
