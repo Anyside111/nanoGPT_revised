@@ -27,6 +27,7 @@ key_query_dim = 64 # 64(default), 32, 8
 window_size = None # 100, 10, 3, None for full attention
 n_regist = 1 # 0, 1, 5, compared with 2.1
 softmax_abs: bool = False
+flash : bool = True
 
 learning_rate = 1e-3 # with baby networks can afford to go a bit higher
 max_iters = 5000

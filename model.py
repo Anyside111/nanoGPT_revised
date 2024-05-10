@@ -58,39 +58,24 @@ class CausalSelfAttention(nn.Module):
         self.dropout = config.dropout
         # flash attention make GPU go brrrrr but support is only in PyTorch >= 2.0
         # self.flash = hasattr(torch.nn.functional, 'scaled_dot_product_attention')
-        self.flash = False
-        if not self.flash:
-            print("WARNING: using slow attention. Flash Attention requires PyTorch >= 2.0")
-            # causal mask to ensure that attention is only applied to the left in the input sequence
-            # self.register_buffer("bias", torch.tril(torch.ones(config.block_size, config.block_size))
-            #                             .view(1, 1, config.block_size, config.block_size))
+        self.flash = config.flash
+
+        # if not self.flash:
+        #     print("WARNING: using slow attention. Flash Attention requires PyTorch >= 2.0")
+        #     # causal mask to ensure that attention is only applied to the left in the input sequence
+        #     self.register_buffer("bias", torch.tril(torch.ones(config.block_size, config.block_size))
+        #                                 .view(1, 1, config.block_size, config.block_size))
         # Causal mask setup
         full_size = config.block_size + config.n_regist
-        full_mask = torch.zeros(full_size, full_size)
-        # Handling only register tokens without a sliding window
-        if self.window_size is None:
-            full_mask = torch.tril(torch.ones(full_size, full_size)) # Full attention within register or non-register tokens
-
-        # Handling only sliding window without register tokens
-        elif self.window_size is not None and config.n_regist == 0:
-            max_window_size = min(self.window_size, config.block_size)
-            sliding_mask = (torch.tril(torch.ones(config.block_size, config.block_size)) -
-                            torch.tril(torch.ones(config.block_size, config.block_size), diagonal=-max_window_size))
-            full_mask[:config.block_size, :config.block_size] = sliding_mask # size of full_mask is block_size * block_size
-
-        # Combining register tokens with sliding window
-        elif self.window_size is not None and config.n_regist > 0:
-            max_window_size = min(self.window_size, config.block_size)
-            sliding_mask = (torch.tril(torch.ones(config.block_size, config.block_size)) -
-                            torch.tril(torch.ones(config.block_size, config.block_size), diagonal=-max_window_size))
-            # Register tokens can be seen by all tokens
-            full_mask[:, :config.n_regist] = 1
-            # full_mask[:config.n_regist, :] = 1 # Register tokens can see all tokens
-            # Sliding window for the rest
-            full_mask[config.n_regist:, config.n_regist:] = sliding_mask
+        assert self.window_size is None or self.window_size <= config.block_size
+        self.window_size = full_size if self.window_size is None else self.window_size
+        mask = (torch.tril(torch.ones(full_size, full_size)) -
+                torch.tril(torch.ones(full_size, full_size), diagonal=-self.window_size))
+        mask[:, :config.n_regist] = 1 # Register tokens can see all tokens
+        mask = mask.bool()
 
         # Register the attention mask
-        self.register_buffer("bias", full_mask.view(1, 1, full_size, full_size))
+        self.register_buffer("bias", mask.view(1, 1, full_size, full_size))
 
     def forward(self, x):
         B, T, C = x.size() # batch size, sequence length, embedding dimensionality (n_embd)
@@ -112,7 +97,7 @@ class CausalSelfAttention(nn.Module):
             # efficient attention using Flash Attention CUDA kernels
             y = torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask=self.bias[:, :, :T, :T],
                                                                  dropout_p=self.dropout if self.training else 0,
-                                                                 is_causal=True) # attn_mask is windowed
+                                                                 is_causal=False) # attn_mask is windowed
         else:
             # Apply sliding window attention using the causal mask
             att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(self.key_query_dim))
@@ -142,7 +127,7 @@ class MLP(nn.Module):
         # self.fc1 = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias)
         # self.fc2 = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias) # fc1 and fc2 both take inputs from the previous layer and produce outputs of the same dimension.
         # self.fc3 = nn.Linear(4 * config.n_embd, config.n_embd, bias=config.bias) # fc3 takes the result of the element-wise multiplication and maps it back to the original embedding dimension.
-        # self.relu = nn.ReLU()
+        # self.gelu = nn.GELU()
         # self.dropout = nn.Dropout(config.dropout)
     def forward(self, x):
         x = self.c_fc(x)
@@ -151,7 +136,7 @@ class MLP(nn.Module):
         x = self.dropout(x)
         return x
         # x1 = self.fc1(x)
-        # x1 = self.relu(x1)
+        # x1 = self.gelu(x1)
         # x2 = self.fc2(x)
         # x3 = x1 * x2  # Element-wise multiplication
         # x3 = self.fc3(x3)
@@ -185,6 +170,7 @@ class GPTConfig:
     window_size: int = None # optional window size for sliding window attention
     n_regist: int = 0 # number of register tokens
     softmax_abs: bool = False # use absolute position embeddings in softmax, like Longformer
+    flash : bool = True # use Flash Attention for faster attention
 
 class GPT(nn.Module):
 
