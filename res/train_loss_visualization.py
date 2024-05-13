@@ -5,7 +5,10 @@ import numpy as np
 import itertools
 
 # Directory and experiment setup
-base_dir = "D:/289L/hw1/nanoGPT_revised/res"
+# base_dir = "D:/289L/hw1/nanoGPT_revised/results"
+# base_dir = "D:/289L/hw1/nanoGPT_revised/results/window_size"
+base_dir = "D:/289L/hw1/nanoGPT_revised/results/round1_mannual_attention"
+# base_dir = "D:/289L/hw1/nanoGPT_revised/results/round2_flash_attention"
 experiment_folders = ["2.1", "2.2", "2.3", "3.1", "3.2", "3.3", "5.1", "5.2", "6.1", "7.1"]
 experiment_titles = {
     "2.1": "Key Query Dim = 64 (Baseline)",
@@ -17,7 +20,8 @@ experiment_titles = {
     "5.1": "Window Size = None, n_regist = 1",
     "5.2": "Window Size = None, n_regist = 5",
     "6.1": "Combined: Window Size = 3 and n_regist = 1",
-    "7.1": "Softmax Abs = True" # vs. Baseline
+    "7.1": "Softmax Abs = True", # vs. Baseline
+    "baseline": "Baseline"
 }
 
 def load_and_prepare_data(folder_name):
@@ -49,21 +53,49 @@ def plot_data(df, folder_name, filter_val_loss_empty=True):
         plt.grid(True)
         plt.show()
 
+
+# file_path = os.path.join(base_dir, "losses_baseline.csv")
+# df = pd.read_csv(file_path, header=None, names=['Iteration', 'Train Loss', 'Validation Loss'])
+# df['Validation Loss'] = pd.to_numeric(df['Validation Loss'], errors='coerce')  # Convert to numeric, make errors NaN
+# plot_data(df, "baseline", filter_val_loss_empty=True)
+# plot_data(df, "baseline", filter_val_loss_empty=False)
+
 # Process and plot data for each experiment
 # for exp in experiment_folders:
-    # df = load_and_prepare_data(exp)
-    # plot_data(df, exp, filter_val_loss_empty=True)
-    # plot_data(df, exp, filter_val_loss_empty=False)
+#     df = load_and_prepare_data(exp)
+#     plot_data(df, exp, filter_val_loss_empty=True)
+#     plot_data(df, exp, filter_val_loss_empty=False)
 
 
 groupings = {
     'Different key_query_dim Comparison': ["2.1", "2.2", "2.3"],
     'Different Window Size Comparison': ["3.1", "3.2", "3.3"],
-    'Different n_regist Comparison': ["5.1", "5.2", "2.1"],
-    'Combined Sliding Window Attention and Register Token vs n_regist=1': ["6.1", "5.1"],
-    'Combined Sliding Window Attention and Register Token vs wind=3': ["6.1", "3.3"],
-    'Exp Softmax vs Abs Softmax': ["7.1", "2.1"]
+    'n_regist = 1 vs 5': ["5.1", "5.2"],
+    'n_regist = 1 vs Baseline': ["2.1", "5.1"],
+    'n_regist = 5 vs Baseline': ["2.1", "5.2"],
+    'Combined Sliding Window Attention and Register Token vs n_regist=1': ["5.1", "6.1"],
+    'Combined Sliding Window Attention and Register Token vs window=3': ["3.3", "6.1"],
+    'Exp Softmax vs Abs Softmax': ["2.1", "7.1"]
 }
+
+
+# window_sizes = ["3.1", "3.2", "3.3", "3.4", "3.5", "3.6", "3.7"]
+# # Titles for the experiments
+# experiment_titles = {
+#     "3.1": "Window Size = 100",
+#     "3.2": "Window Size = 10",
+#     "3.3": "Window Size = 3",
+#     "3.4": "Window Size = 2",
+#     "3.5": "Window Size = 5",
+#     "3.6": "Window Size = 7",
+#     "3.7": "Window Size = 15"
+# }
+# groupings = {'window_size 10, 15': ["3.2", "3.7"],
+#              'window_size 2, 3': ["3.4","3.3"],
+#              'window_size 5, 7 and 15': ["3.5", "3.6", "3.7"],
+#              'window_size 10, 100': ["3.2", "3.1"],
+#              'window_size 3, 5 and 10': ["3.3", "3.5", "3.2"]
+#              }
 
 def plot_train_loss(group_name, experiments):
 

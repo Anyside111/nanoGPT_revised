@@ -81,9 +81,12 @@ compile = True # use PyTorch 2.0 to compile the model to be faster
 config_keys = [k for k,v in globals().items() if not k.startswith('_') and isinstance(v, (int, float, bool, str))]
 
 
-for cfg_file_num in ["2.1", "2.2", "2.3", "3.1", "3.2", "3.3", "5.1", "5.2", "6.1", "7.1"]: #
+for cfg_file_num in ["2.1"]:#, "2.2", "2.3", "3.1", "3.2", "3.3", "5.1", "5.2", "6.1", "7.1"
     exec(open(f'config/hw1/train_shakespeare_char_{cfg_file_num}.py').read())
     # exec(open('configurator.py').read()) # overrides from command line or config file
+
+# for cfg_file_num in ["3.4", "3.5", "3.6", "3.7"]: # train multi window size
+#     exec(open(f'config/sliding_window/train_shakespeare_char_{cfg_file_num}.py').read())
     config = {k: globals()[k] for k in config_keys} # will be useful for logging
     # -----------------------------------------------------------------------------
 

@@ -58,8 +58,8 @@ class CausalSelfAttention(nn.Module):
         self.dropout = config.dropout
         # flash attention make GPU go brrrrr but support is only in PyTorch >= 2.0
         # self.flash = hasattr(torch.nn.functional, 'scaled_dot_product_attention')
-        self.flash = config.flash
 
+        self.flash = config.flash
         # if not self.flash:
         #     print("WARNING: using slow attention. Flash Attention requires PyTorch >= 2.0")
         #     # causal mask to ensure that attention is only applied to the left in the input sequence
@@ -71,7 +71,7 @@ class CausalSelfAttention(nn.Module):
         self.window_size = full_size if self.window_size is None else self.window_size
         mask = (torch.tril(torch.ones(full_size, full_size)) -
                 torch.tril(torch.ones(full_size, full_size), diagonal=-self.window_size))
-        mask[:, :config.n_regist] = 1 # Register tokens can see all tokens
+        mask[:, :config.n_regist] = 1 # Register tokens can be seen by all tokens
         mask = mask.bool()
 
         # Register the attention mask
@@ -101,7 +101,7 @@ class CausalSelfAttention(nn.Module):
         else:
             # Apply sliding window attention using the causal mask
             att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(self.key_query_dim))
-            att = att.masked_fill(self.bias[:,:,:T,:T] == 0, float('-inf'))
+            att = att.masked_fill(self.bias[:,:,:T,:T] == False, float('-inf'))
 
             if self.softmax_abs:
                 # use absolute position embeddings in softmax
@@ -120,28 +120,28 @@ class MLP(nn.Module):
 
     def __init__(self, config):
         super().__init__()
-        self.c_fc = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias)
-        self.gelu = nn.GELU()
-        self.c_proj = nn.Linear(4 * config.n_embd, config.n_embd, bias=config.bias)
-        self.dropout = nn.Dropout(config.dropout)
-        # self.fc1 = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias)
-        # self.fc2 = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias) # fc1 and fc2 both take inputs from the previous layer and produce outputs of the same dimension.
-        # self.fc3 = nn.Linear(4 * config.n_embd, config.n_embd, bias=config.bias) # fc3 takes the result of the element-wise multiplication and maps it back to the original embedding dimension.
+        # self.c_fc = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias)
         # self.gelu = nn.GELU()
+        # self.c_proj = nn.Linear(4 * config.n_embd, config.n_embd, bias=config.bias)
         # self.dropout = nn.Dropout(config.dropout)
+        self.fc1 = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias)
+        self.fc2 = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias) # fc1 and fc2 both take inputs from the previous layer and produce outputs of the same dimension.
+        self.fc3 = nn.Linear(4 * config.n_embd, config.n_embd, bias=config.bias) # fc3 takes the result of the element-wise multiplication and maps it back to the original embedding dimension.
+        self.gelu = nn.GELU()
+        self.dropout = nn.Dropout(config.dropout)
     def forward(self, x):
-        x = self.c_fc(x)
-        x = self.gelu(x)
-        x = self.c_proj(x)
-        x = self.dropout(x)
-        return x
-        # x1 = self.fc1(x)
-        # x1 = self.gelu(x1)
-        # x2 = self.fc2(x)
-        # x3 = x1 * x2  # Element-wise multiplication
-        # x3 = self.fc3(x3)
-        # x3 = self.dropout(x3)
-        # return x3
+        # x = self.c_fc(x)
+        # x = self.gelu(x)
+        # x = self.c_proj(x)
+        # x = self.dropout(x)
+        # return x
+        x1 = self.fc1(x)
+        x1 = self.gelu(x1)
+        x2 = self.fc2(x)
+        x3 = x1 * x2  # Element-wise multiplication
+        x3 = self.fc3(x3)
+        x3 = self.dropout(x3)
+        return x3
 
 class Block(nn.Module):
 
