@@ -28,8 +28,9 @@ class LayerNorm(nn.Module):
 
 
 def softmax_abs(input, dim=-1):
+    # print("Using softmax_abs")
     abs_input = torch.abs(input)
-    summation = torch.sum(abs_input, dim=dim, keepdim=True)
+    summation = torch.sum(abs_input, dim=dim, keepdim=True) + 1e-8
     return abs_input / summation
 
 class CausalSelfAttention(nn.Module):
@@ -101,12 +102,14 @@ class CausalSelfAttention(nn.Module):
         else:
             # Apply sliding window attention using the causal mask
             att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(self.key_query_dim))
-            att = att.masked_fill(self.bias[:,:,:T,:T] == False, float('-inf'))
+
 
             if self.softmax_abs:
                 # use absolute position embeddings in softmax
+                att = att.masked_fill(self.bias[:, :, :T, :T] == False, 0.0)
                 att = softmax_abs(att, dim=-1)
             else:
+                att = att.masked_fill(self.bias[:, :, :T, :T] == False, float('-inf'))
                 att = F.softmax(att, dim=-1)
             att = self.attn_dropout(att)
             y = att @ v # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
@@ -120,28 +123,28 @@ class MLP(nn.Module):
 
     def __init__(self, config):
         super().__init__()
-        # self.c_fc = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias)
-        # self.gelu = nn.GELU()
-        # self.c_proj = nn.Linear(4 * config.n_embd, config.n_embd, bias=config.bias)
-        # self.dropout = nn.Dropout(config.dropout)
-        self.fc1 = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias)
-        self.fc2 = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias) # fc1 and fc2 both take inputs from the previous layer and produce outputs of the same dimension.
-        self.fc3 = nn.Linear(4 * config.n_embd, config.n_embd, bias=config.bias) # fc3 takes the result of the element-wise multiplication and maps it back to the original embedding dimension.
+        self.c_fc = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias)
         self.gelu = nn.GELU()
+        self.c_proj = nn.Linear(4 * config.n_embd, config.n_embd, bias=config.bias)
         self.dropout = nn.Dropout(config.dropout)
+        # self.fc1 = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias)
+        # self.fc2 = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias) # fc1 and fc2 both take inputs from the previous layer and produce outputs of the same dimension.
+        # self.fc3 = nn.Linear(4 * config.n_embd, config.n_embd, bias=config.bias) # fc3 takes the result of the element-wise multiplication and maps it back to the original embedding dimension.
+        # self.gelu = nn.GELU()
+        # self.dropout = nn.Dropout(config.dropout)
     def forward(self, x):
-        # x = self.c_fc(x)
-        # x = self.gelu(x)
-        # x = self.c_proj(x)
-        # x = self.dropout(x)
-        # return x
-        x1 = self.fc1(x)
-        x1 = self.gelu(x1)
-        x2 = self.fc2(x)
-        x3 = x1 * x2  # Element-wise multiplication
-        x3 = self.fc3(x3)
-        x3 = self.dropout(x3)
-        return x3
+        x = self.c_fc(x)
+        x = self.gelu(x)
+        x = self.c_proj(x)
+        x = self.dropout(x)
+        return x
+        # x1 = self.fc1(x)
+        # x1 = self.gelu(x1)
+        # x2 = self.fc2(x)
+        # x3 = x1 * x2  # Element-wise multiplication
+        # x3 = self.fc3(x3)
+        # x3 = self.dropout(x3)
+        # return x3
 
 class Block(nn.Module):
 

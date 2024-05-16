@@ -7,9 +7,9 @@ import itertools
 # Directory and experiment setup
 # base_dir = "D:/289L/hw1/nanoGPT_revised/results"
 # base_dir = "D:/289L/hw1/nanoGPT_revised/results/window_size"
-base_dir = "D:/289L/hw1/nanoGPT_revised/results/round1_mannual_attention"
-# base_dir = "D:/289L/hw1/nanoGPT_revised/results/round2_flash_attention"
-experiment_folders = ["2.1", "2.2", "2.3", "3.1", "3.2", "3.3", "5.1", "5.2", "6.1", "7.1"]
+# base_dir = "D:/289L/hw1/nanoGPT_revised/results/round1_mannual_attention"
+base_dir = "D:/289L/hw1/nanoGPT_revised/results/round2_flash_attention"
+experiment_folders = ["2.1", "2.2", "2.3", "3.1", "3.2", "3.3", "4.1", "5.1", "5.2", "6.1", "7.1"]
 experiment_titles = {
     "2.1": "Key Query Dim = 64 (Baseline)",
     "2.2": "Key Query Dim = 32",
@@ -17,6 +17,7 @@ experiment_titles = {
     "3.1": "Window Size = 100, n_regist = 0",
     "3.2": "Window Size = 10, n_regist = 0",
     "3.3": "Window Size = 3, n_regist = 0",
+    "4.1": "3-layer Transformer",
     "5.1": "Window Size = None, n_regist = 1",
     "5.2": "Window Size = None, n_regist = 5",
     "6.1": "Combined: Window Size = 3 and n_regist = 1",
@@ -73,6 +74,7 @@ groupings = {
     'n_regist = 1 vs 5': ["5.1", "5.2"],
     'n_regist = 1 vs Baseline': ["2.1", "5.1"],
     'n_regist = 5 vs Baseline': ["2.1", "5.2"],
+    '2-layer vs 3-layer Transformer': ["2.1", "4.1"],
     'Combined Sliding Window Attention and Register Token vs n_regist=1': ["5.1", "6.1"],
     'Combined Sliding Window Attention and Register Token vs window=3': ["3.3", "6.1"],
     'Exp Softmax vs Abs Softmax': ["2.1", "7.1"]

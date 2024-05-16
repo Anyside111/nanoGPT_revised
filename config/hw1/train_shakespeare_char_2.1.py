@@ -27,7 +27,7 @@ key_query_dim = 64 # 64(default), 32, 8
 window_size = None # 100, 10, 3, None for full attention
 n_regist = 0 # 0, 1, 5， 0 for no registration
 softmax_abs: bool = False # False for Exp softmax, True for Abs softmax
-flash : bool = True
+flash : bool = True # False for only prob.7, True for all experiments except prob.7
 
 learning_rate = 1e-3 # with baby networks can afford to go a bit higher
 max_iters = 5000
