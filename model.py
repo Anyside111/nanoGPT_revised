@@ -123,28 +123,33 @@ class MLP(nn.Module):
 
     def __init__(self, config):
         super().__init__()
-        self.c_fc = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias)
-        self.gelu = nn.GELU()
-        self.c_proj = nn.Linear(4 * config.n_embd, config.n_embd, bias=config.bias)
-        self.dropout = nn.Dropout(config.dropout)
-        # self.fc1 = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias)
-        # self.fc2 = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias) # fc1 and fc2 both take inputs from the previous layer and produce outputs of the same dimension.
-        # self.fc3 = nn.Linear(4 * config.n_embd, config.n_embd, bias=config.bias) # fc3 takes the result of the element-wise multiplication and maps it back to the original embedding dimension.
-        # self.gelu = nn.GELU()
-        # self.dropout = nn.Dropout(config.dropout)
+        self.config = config
+        if config.two_layer:
+            self.c_fc = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias)
+            self.gelu = nn.GELU()
+            self.c_proj = nn.Linear(4 * config.n_embd, config.n_embd, bias=config.bias)
+            self.dropout = nn.Dropout(config.dropout)
+        else:
+            self.fc1 = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias)
+            self.fc2 = nn.Linear(config.n_embd, 4 * config.n_embd, bias=config.bias) # fc1 and fc2 both take inputs from the previous layer and produce outputs of the same dimension.
+            self.fc3 = nn.Linear(4 * config.n_embd, config.n_embd, bias=config.bias) # fc3 takes the result of the element-wise multiplication and maps it back to the original embedding dimension.
+            self.gelu = nn.GELU()
+            self.dropout = nn.Dropout(config.dropout)
     def forward(self, x):
-        x = self.c_fc(x)
-        x = self.gelu(x)
-        x = self.c_proj(x)
-        x = self.dropout(x)
-        return x
-        # x1 = self.fc1(x)
-        # x1 = self.gelu(x1)
-        # x2 = self.fc2(x)
-        # x3 = x1 * x2  # Element-wise multiplication
-        # x3 = self.fc3(x3)
-        # x3 = self.dropout(x3)
-        # return x3
+        if self.config.two_layer:
+            x = self.c_fc(x)
+            x = self.gelu(x)
+            x = self.c_proj(x)
+            x = self.dropout(x)
+            return x
+        else:
+            x1 = self.fc1(x)
+            x1 = self.gelu(x1)
+            x2 = self.fc2(x)
+            x3 = x1 * x2  # Element-wise multiplication
+            x3 = self.fc3(x3)
+            x3 = self.dropout(x3)
+            return x3
 
 class Block(nn.Module):
 
@@ -174,6 +179,7 @@ class GPTConfig:
     n_regist: int = 0 # number of register tokens
     softmax_abs: bool = False # use absolute position embeddings in softmax, like Longformer
     flash : bool = True # use Flash Attention for faster attention
+    two_layer: bool = True # use a 2-layer transformer for prob.1,2,3,5,6,7; use 3-layer transformer only for prob.4
 
 class GPT(nn.Module):
 
